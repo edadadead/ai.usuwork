@@ -59,7 +59,7 @@ def self_ping_worker():
     if not app_url:
         return
     while True:
-        time.sleep(600)
+        time.sleep(600)  # Every 10 minutes
         try:
             requests.get(f"{app_url}/health", timeout=5)
         except Exception:
@@ -106,14 +106,13 @@ def chat():
         return jsonify({"error": "GROQ_API_KEY is not set in environment variables."}), 500
 
     try:
-        # Call Groq's free OpenAI-compatible endpoint
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY}",
             "Content-Type": "application/json"
         }
         
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {"role": "system", "content": get_system_prompt()},
                 {"role": "user", "content": user_prompt}
