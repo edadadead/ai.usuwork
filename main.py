@@ -2,15 +2,14 @@ import os
 import time
 import threading
 import requests
-from flask import Flask, send_from_directory
+from flask import Flask, request, send_from_directory
 
-# Explicitly mapping mimetypes so the browser accepts the JS module
 app = Flask(__name__, static_url_path='', static_folder='.')
 
 @app.after_request
 def add_header(response):
-    # Ensure JavaScript modules are served with the correct MIME type
-    if response.path.endswith('.js'):
+    # Fixed: Use request.path instead of response.path
+    if request.path.endswith('.js'):
         response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
     return response
 
@@ -43,3 +42,4 @@ def health():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+    
