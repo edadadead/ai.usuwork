@@ -3,80 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart AI Chatbot</title>
+    <title>ai-usuwork</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .chat-container { width: 100%; max-width: 600px; background: white; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; height: 80vh; }
-        .chat-header { background: #4f46e5; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 1.1rem; }
+        body { font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .chat-container { width: 100%; max-width: 600px; background: #1e293b; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; height: 80vh; }
+        .chat-header { background: #0284c7; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 1.1rem; }
         .chat-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .message { padding: 10px 14px; border-radius: 6px; max-width: 80%; line-height: 1.4; word-break: break-word; white-space: pre-wrap; }
-        .user-message { background: #e0e7ff; align-self: flex-end; color: #1e1b4b; }
-        .ai-message { background: #f3f4f6; align-self: flex-start; color: #1f2937; }
-        .chat-input-area { display: flex; border-top: 1px solid #e5e7eb; padding: 10px; background: #fff; }
-        .chat-input-area input { flex: 1; padding: 10px; border: 1px solid #d1d5db; border-radius: 4px; outline: none; font-size: 1rem; }
-        .chat-input-area button { background: #4f46e5; color: white; border: none; padding: 10px 20px; margin-left: 8px; border-radius: 4px; cursor: pointer; font-size: 1rem; }
-        .chat-input-area button:hover { background: #4338ca; }
+        .user-message { background: #0369a1; align-self: flex-end; color: #f0f9ff; }
+        .ai-message { background: #334155; align-self: flex-start; color: #f8fafc; }
+        .chat-input-area { display: flex; border-top: 1px solid #475569; padding: 10px; background: #1e293b; }
+        .chat-input-area input { flex: 1; padding: 10px; border: 1px solid #475569; background: #0f172a; color: white; border-radius: 4px; outline: none; font-size: 1rem; }
+        .chat-input-area button { background: #0284c7; color: white; border: none; padding: 10px 20px; margin-left: 8px; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+        .chat-input-area button:hover { background: #0369a1; }
+        #loadingStatus { padding: 10px; background: #1e293b; text-align: center; font-size: 0.9rem; color: #38bdf8; border-bottom: 1px solid #475569; }
     </style>
 </head>
 <body>
     <div class="chat-container">
-        <div class="chat-header">🤖 Smart AI Assistant (Live on Render)</div>
+        <div class="chat-header">🚀 Local WebGPU AI (Running on YOUR GPU)</div>
+        <div id="loadingStatus">Initializing WebGPU engine... Please wait.</div>
         <div id="chatMessages" class="chat-messages">
-            <div class="message ai-message">Hello! I'm your AI running live on your server. How can I help you today?</div>
+            <div class="message ai-message">Hello! I am running entirely inside your browser using WebGPU on your local graphics card. No server API needed!</div>
         </div>
         <div class="chat-input-area">
-            <input type="text" id="userInput" placeholder="Type your message here..." onkeypress="handleKeyPress(event)">
-            <button onclick="sendMessage()">Send</button>
+            <input type="text" id="userInput" placeholder="Type a message..." disabled onkeypress="handleKeyPress(event)">
+            <button id="sendBtn" disabled onclick="sendMessage()">Send</button>
         </div>
     </div>
 
-    <script>
-        async function sendMessage() {
-            const inputField = document.getElementById('userInput');
-            const messagesContainer = document.getElementById('chatMessages');
-            const prompt = inputField.value.trim();
+    <!-- Import WebLLM via CDN module -->
+    <script type="module">
+        import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 
-            if (!prompt) return;
+        let engine = null;
+        const statusEl = document.getElementById('loadingStatus');
+        const inputField = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const messagesContainer = document.getElementById('chatMessages');
+
+        const selectedModel = "Llama-3.2-1B-Instruct-q4f16_1";
+
+        async function initAI() {
+            try {
+                engine = await webllm.CreateWebWorkerMLCEngine(
+                    new Worker(
+                        URL.createObjectURL(new Blob([`
+                            import { WebWorkerMLCEngineHandler } from "https://esm.run/@mlc-ai/web-llm";
+                            const handler = new WebWorkerMLCEngineHandler();
+                            onmessage = (msg) => handler.onmessage(msg);
+                        `], { type: "javascript/module" })),
+                        { type: "module" }
+                    ),
+                    selectedModel,
+                    {
+                        initProgressCallback: (progress) => {
+                            statusEl.innerText = progress.text;
+                        }
+                    }
+                );
+
+                statusEl.innerText = "Ready! AI running locally on your GPU.";
+                statusEl.style.color = "#4ade80";
+                inputField.disabled = false;
+                sendBtn.disabled = false;
+            } catch (err) {
+                statusEl.innerText = "WebGPU Error (Ensure your browser supports WebGPU): " + err.message;
+                statusEl.style.color = "#f87171";
+                console.error(err);
+            }
+        }
+
+        window.sendMessage = async function() {
+            const prompt = inputField.value.trim();
+            if (!prompt || !engine) return;
 
             messagesContainer.innerHTML += `<div class="message user-message">${escapeHtml(prompt)}</div>`;
             inputField.value = '';
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-            const loadingId = 'loading-' + Date.now();
-            messagesContainer.innerHTML += `<div id="${loadingId}" class="message ai-message">Thinking...</div>`;
+            const aiMsgId = 'ai-' + Date.now();
+            messagesContainer.innerHTML += `<div id="${aiMsgId}" class="message ai-message">...</div>`;
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            const aiMsgEl = document.getElementById(aiMsgId);
 
             try {
-                const response = await fetch('/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt })
-                });
-                const data = await response.json();
+                const messages = [
+                    { role: "system", content: "You are a helpful assistant running locally on the user's browser GPU." },
+                    { role: "user", content: prompt }
+                ];
 
-                document.getElementById(loadingId).remove();
-
-                if (data.response) {
-                    messagesContainer.innerHTML += `<div class="message ai-message">${escapeHtml(data.response)}</div>`;
-                } else {
-                    messagesContainer.innerHTML += `<div class="message ai-message" style="color: red;">Error: ${escapeHtml(data.error || 'Unknown error')}</div>`;
-                }
-            } catch (error) {
-                document.getElementById(loadingId).remove();
-                messagesContainer.innerHTML += `<div class="message ai-message" style="color: red;">Network error connecting to AI.</div>`;
+                const reply = await engine.chat.completions.create({ messages });
+                aiMsgEl.innerText = reply.choices[0].message.content;
+            } catch (err) {
+                aiMsgEl.innerText = "Error generating response: " + err.message;
+                aiMsgEl.style.color = "#f87171";
             }
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
-        function handleKeyPress(event) {
+        window.handleKeyPress = function(event) {
             if (event.key === 'Enter') {
-                sendMessage();
+                window.sendMessage();
             }
         }
 
         function escapeHtml(text) {
             return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
+
+        initAI();
     </script>
 </body>
 </html>
