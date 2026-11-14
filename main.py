@@ -111,8 +111,9 @@ def chat():
             "Content-Type": "application/json"
         }
         
+        # Using Groq's active production model ID
         payload = {
-            "model": "llama-3.1-8b-instant",
+            "model": "openai/gpt-oss-20b",
             "messages": [
                 {"role": "system", "content": get_system_prompt()},
                 {"role": "user", "content": user_prompt}
@@ -154,3 +155,4 @@ def chat():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+    
