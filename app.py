@@ -2,7 +2,7 @@ import os
 import time
 import threading
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from google import genai
 
 app = Flask(__name__)
@@ -11,8 +11,6 @@ app = Flask(__name__)
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # --- AUTO-TRAIN / KEEP-ALIVE WORKER ---
-# Render free tier spins down after 15 minutes of inactivity. 
-# This background thread pings its own URL every 10 minutes to prevent sleep.
 def self_ping_worker():
     app_url = os.environ.get("RENDER_EXTERNAL_URL")
     if not app_url:
@@ -34,10 +32,8 @@ threading.Thread(target=self_ping_worker, daemon=True).start()
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({
-        "status": "online",
-        "message": "Smart AI Render Server is running and awake!"
-    })
+    # Renders the index.html template in the templates/ folder
+    return render_template("index.html")
 
 
 @app.route("/health", methods=["GET"])
@@ -54,7 +50,6 @@ def chat():
         return jsonify({"error": "Prompt is required"}), 400
 
     try:
-        # Generate smart AI response using Gemini
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=user_prompt,
