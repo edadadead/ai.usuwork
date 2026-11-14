@@ -33,7 +33,6 @@ threading.Thread(target=self_ping_worker, daemon=True).start()
 
 @app.route("/", methods=["GET"])
 def home():
-    # Serves index.html directly from the root folder
     return send_from_directory('.', 'index.html')
 
 
@@ -50,16 +49,29 @@ def chat():
     if not user_prompt:
         return jsonify({"error": "Prompt is required"}), 400
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",  # Updated to current available model
-            contents=user_prompt,
-        )
-        return jsonify({
-            "response": response.text
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    max_retries = 3
+    backoff_delay = 2  # seconds
+
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=user_prompt,
+            )
+            return jsonify({
+                "response": response.text
+            })
+        except Exception as e:
+            error_message = str(e)
+            # If it's a 503 / overloaded error and we have retries left, wait and try again
+            if ("503" in error_message or "UNAVAILABLE" in error_message) and attempt < max_retries - 1:
+                print(f"Model busy (503), retrying in {backoff_delay}s (Attempt {attempt + 1}/{max_retries})...")
+                time.sleep(backoff_delay)
+                backoff_delay *= 2  # Double the wait time for the next retry
+                continue
+            
+            # If it failed all retries or is a different error, return it
+            return jsonify({"error": error_message}), 500
 
 
 if __name__ == "__main__":
