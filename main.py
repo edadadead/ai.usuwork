@@ -4,13 +4,11 @@ import threading
 import json
 import requests
 from flask import Flask, request, jsonify, send_from_directory
-from google import genai
-from google.genai import types
 
 app = Flask(__name__, static_url_path='', static_folder='.')
 
-# Initialize Google GenAI client using the server's environment variable
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+# Get Groq API Key from environment variables
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 # --- SAFE BRAIN MEMORY MANAGEMENT ---
 BRAIN_FILE = "brain.json"
@@ -61,7 +59,7 @@ def self_ping_worker():
     if not app_url:
         return
     while True:
-        time.sleep(600)  # Every 10 minutes
+        time.sleep(600)
         try:
             requests.get(f"{app_url}/health", timeout=5)
         except Exception:
@@ -104,49 +102,54 @@ def chat():
     if not user_prompt:
         return jsonify({"error": "Prompt is required"}), 400
 
-    max_retries = 3
-    backoff_delay = 2
+    if not GROQ_API_KEY:
+        return jsonify({"error": "GROQ_API_KEY is not set in environment variables."}), 500
 
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=get_system_prompt(),
-                    temperature=0.7,
-                )
-            )
-            
-            ai_reply = response.text
+    try:
+        # Call Groq's free OpenAI-compatible endpoint
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+                {"role": "system", "content": get_system_prompt()},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.7
+        }
 
-            # Auto-training: Extract new concepts from conversation and save to brain.json
-            words = [w.strip(".,!?()[]{}\"'`") for w in (user_prompt + " " + ai_reply).split() if len(w) > 4]
-            current_concepts = set(BRAIN_DATA.get('vocabulary_and_concepts', []))
-            
-            new_additions = 0
-            for word in words:
-                if word not in current_concepts and not word.startswith("http"):
-                    current_concepts.add(word)
-                    new_additions += 1
+        resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=30)
+        res_data = resp.json()
 
-            if new_additions > 0:
-                BRAIN_DATA['vocabulary_and_concepts'] = list(current_concepts)[-1000:]
-                save_brain()
+        if resp.status_code != 200:
+            return jsonify({"error": res_data.get("error", {}).get("message", "Groq API error")}), resp.status_code
 
-            return jsonify({
-                "response": ai_reply,
-                "brain_stats": f"Learned {new_additions} new concepts! Total memory: {len(BRAIN_DATA['vocabulary_and_concepts'])}"
-            })
+        ai_reply = res_data["choices"][0]["message"]["content"]
 
-        except Exception as e:
-            error_message = str(e)
-            if ("503" in error_message or "UNAVAILABLE" in error_message) and attempt < max_retries - 1:
-                time.sleep(backoff_delay)
-                backoff_delay *= 2
-                continue
-            
-            return jsonify({"error": error_message}), 500
+        # Auto-training: Extract new concepts and save to brain.json
+        words = [w.strip(".,!?()[]{}\"'`") for w in (user_prompt + " " + ai_reply).split() if len(w) > 4]
+        current_concepts = set(BRAIN_DATA.get('vocabulary_and_concepts', []))
+        
+        new_additions = 0
+        for word in words:
+            if word not in current_concepts and not word.startswith("http"):
+                current_concepts.add(word)
+                new_additions += 1
+
+        if new_additions > 0:
+            BRAIN_DATA['vocabulary_and_concepts'] = list(current_concepts)[-1000:]
+            save_brain()
+
+        return jsonify({
+            "response": ai_reply,
+            "brain_stats": f"Learned {new_additions} new concepts! Total memory: {len(BRAIN_DATA['vocabulary_and_concepts'])}"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
