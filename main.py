@@ -21,7 +21,6 @@ def load_brain():
         if os.path.exists(BRAIN_FILE):
             with open(BRAIN_FILE, "r", encoding="utf-8") as f:
                 BRAIN_DATA = json.load(f)
-            # Keep memory capped at 1,000 concepts max to prevent RAM exhaustion on Render free tier
             concepts = BRAIN_DATA.get('vocabulary_and_concepts', [])
             if len(concepts) > 1000:
                 BRAIN_DATA['vocabulary_and_concepts'] = concepts[-1000:]
@@ -75,6 +74,22 @@ def home():
     return send_from_directory('.', 'index.html')
 
 
+@app.route("/admin", methods=["GET"])
+def admin_panel():
+    return send_from_directory('.', 'admin.html')
+
+
+@app.route("/admin/shutdown", methods=["POST"])
+def admin_shutdown():
+    print("Admin shutdown command triggered!")
+    def kill_server():
+        time.sleep(1)
+        os._exit(0)
+    
+    threading.Thread(target=kill_server).start()
+    return jsonify({"message": "Server process successfully terminated."}), 200
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "healthy", "memory_size": len(BRAIN_DATA.get('vocabulary_and_concepts', []))}), 200
@@ -86,7 +101,7 @@ def chat():
     user_prompt = data.get("prompt", "")
 
     if not user_prompt:
-        return jsonify({"error": "Prompt is required"}}, 400
+        return jsonify({"error": "Prompt is required"}), 400
 
     max_retries = 3
     backoff_delay = 2
