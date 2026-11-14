@@ -2,10 +2,11 @@ import os
 import time
 import threading
 import requests
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, send_from_directory
 from google import genai
 
-app = Flask(__name__)
+# Tell Flask that index.html lives in the current working directory
+app = Flask(__name__, static_url_path='', static_folder='.')
 
 # Initialize the Google GenAI client using the environment variable GEMINI_API_KEY
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
@@ -32,8 +33,8 @@ threading.Thread(target=self_ping_worker, daemon=True).start()
 
 @app.route("/", methods=["GET"])
 def home():
-    # Renders the index.html template in the templates/ folder
-    return render_template("index.html")
+    # Serves index.html directly from the root folder
+    return send_from_directory('.', 'index.html')
 
 
 @app.route("/health", methods=["GET"])
