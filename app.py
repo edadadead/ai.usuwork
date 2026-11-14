@@ -1,17 +1,63 @@
 import os
 import time
 import threading
+import json
 import requests
 from flask import Flask, request, jsonify, send_from_directory
 from google import genai
+from google.genai import types
 
-# Tell Flask that index.html lives in the current working directory
+# Flask setup (serving static files from current directory)
 app = Flask(__name__, static_url_path='', static_folder='.')
 
-# Initialize the Google GenAI client using the environment variable GEMINI_API_KEY
+# Initialize Google GenAI client
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# --- AUTO-TRAIN / KEEP-ALIVE WORKER ---
+# --- AUTO-TRAIN / LOAD LOCAL BRAIN MEMORY ---
+BRAIN_FILE = "brain.json"
+BRAIN_DATA = {}
+
+def load_brain():
+    global BRAIN_DATA
+    try:
+        if os.path.exists(BRAIN_FILE):
+            with open(BRAIN_FILE, "r", encoding="utf-8") as f:
+                BRAIN_DATA = json.load(f)
+            print(f"Loaded brain.json with {len(BRAIN_DATA.get('vocabulary_and_concepts', []))} concepts.")
+        else:
+            # Create a default structure if it doesn't exist
+            BRAIN_DATA = {
+                "ai_identity": {"name": "RenderBrain AI", "purpose": "Autonomous self-learning server AI."},
+                "core_rules": ["Be helpful, concise, and learn continuously."],
+                "vocabulary_and_concepts": ["Flask", "Render", "Python", "AI", "Server"]
+            }
+            save_brain()
+    except Exception as e:
+        print(f"Error loading brain.json: {e}")
+
+def save_brain():
+    try:
+        with open(BRAIN_FILE, "w", encoding="utf-8") as f:
+            json.dump(BRAIN_DATA, f, indent=4)
+        print("Brain.json updated and auto-trained successfully!")
+    except Exception as e:
+        print(f"Error saving brain.json: {e}")
+
+# Initial load on boot
+load_brain()
+
+# Build system prompt dynamically from brain data
+def get_system_prompt():
+    concepts = BRAIN_DATA.get('vocabulary_and_concepts', [])
+    return f"""
+You are {BRAIN_DATA.get('ai_identity', {}).get('name', 'AI')}.
+Purpose: {BRAIN_DATA.get('ai_identity', {}).get('purpose', '')}
+Core Rules: {json.dumps(BRAIN_DATA.get('core_rules', []))}
+Learned Brain Memory (Total concepts: {len(concepts)}): {json.dumps(concepts[-200:])} 
+(Use this evolving memory base to inform your context and vocabulary).
+"""
+
+# --- KEEP-ALIVE WORKER ---
 def self_ping_worker():
     app_url = os.environ.get("RENDER_EXTERNAL_URL")
     if not app_url:
@@ -20,14 +66,13 @@ def self_ping_worker():
 
     print(f"Starting self-ping keep-alive loop for: {app_url}")
     while True:
-        time.sleep(600)  # Wait for 10 minutes (600 seconds)
+        time.sleep(600)  # Every 10 minutes
         try:
             response = requests.get(f"{app_url}/health")
             print(f"Self-ping status: {response.status_code}")
         except Exception as e:
             print(f"Self-ping failed: {e}")
 
-# Start the background thread when the Flask app boots up
 threading.Thread(target=self_ping_worker, daemon=True).start()
 
 
@@ -38,7 +83,7 @@ def home():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "healthy"}), 200
+    return jsonify({"status": "healthy", "brain_size": len(BRAIN_DATA.get('vocabulary_and_concepts', []))}), 200
 
 
 @app.route("/chat", methods=["POST"])
@@ -50,27 +95,52 @@ def chat():
         return jsonify({"error": "Prompt is required"}), 400
 
     max_retries = 3
-    backoff_delay = 2  # seconds
+    backoff_delay = 2
 
     for attempt in range(max_retries):
         try:
+            # Generate response using current system memory
             response = client.models.generate_content(
                 model="gemini-3.8-flash",
                 contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=get_system_prompt(),
+                    temperature=0.7,
+                )
             )
+            
+            ai_reply = response.text
+
+            # --- AUTO-TRAIN LOGIC ---
+            # Extract new words/tokens from the user prompt and AI response to expand brain.json
+            words = [w.strip(".,!?()[]{}\"'`") for w in (user_prompt + " " + ai_reply).split() if len(w) > 4]
+            current_concepts = set(BRAIN_DATA.get('vocabulary_and_concepts', []))
+            
+            new_additions = 0
+            for word in words:
+                if word not in current_concepts and not word.startswith("http"):
+                    current_concepts.add(word)
+                    new_additions += 1
+
+            if new_additions > 0:
+                # Keep up to 1000 words as requested
+                BRAIN_DATA['vocabulary_and_concepts'] = list(current_concepts)[-1000:]
+                save_brain()
+
             return jsonify({
-                "response": response.text
+                "response": ai_reply,
+                "brain_stats": f"Learned {new_additions} new concepts! Total memory size: {len(BRAIN_DATA['vocabulary_and_concepts'])}"
             })
+
         except Exception as e:
+        
             error_message = str(e)
-            # If it's a 503 / overloaded error and we have retries left, wait and try again
             if ("503" in error_message or "UNAVAILABLE" in error_message) and attempt < max_retries - 1:
-                print(f"Model busy (503), retrying in {backoff_delay}s (Attempt {attempt + 1}/{max_retries})...")
+                print(f"Model busy (503), retrying in {backoff_delay}s...")
                 time.sleep(backoff_delay)
-                backoff_delay *= 2  # Double the wait time for the next retry
+                backoff_delay *= 2
                 continue
             
-            # If it failed all retries or is a different error, return it
             return jsonify({"error": error_message}), 500
 
 
