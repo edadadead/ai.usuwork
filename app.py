@@ -13,7 +13,7 @@ app = Flask(__name__, static_url_path='', static_folder='.')
 # Initialize Google GenAI client
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# --- AUTO-TRAIN / LOAD LOCAL BRAIN MEMORY ---
+# --- UNLIMITED AUTO-TRAIN / LOAD LOCAL BRAIN MEMORY ---
 BRAIN_FILE = "brain.json"
 BRAIN_DATA = {}
 
@@ -23,12 +23,11 @@ def load_brain():
         if os.path.exists(BRAIN_FILE):
             with open(BRAIN_FILE, "r", encoding="utf-8") as f:
                 BRAIN_DATA = json.load(f)
-            print(f"Loaded brain.json with {len(BRAIN_DATA.get('vocabulary_and_concepts', []))} concepts.")
+            print(f"Loaded brain.json with {len(BRAIN_DATA.get('vocabulary_and_concepts', []))} concepts (Unlimited growth mode).")
         else:
-            # Create a default structure if it doesn't exist
             BRAIN_DATA = {
-                "ai_identity": {"name": "RenderBrain AI", "purpose": "Autonomous self-learning server AI."},
-                "core_rules": ["Be helpful, concise, and learn continuously."],
+                "ai_identity": {"name": "RenderBrain AI", "purpose": "Autonomous self-learning server AI with infinite memory."},
+                "core_rules": ["Be helpful, concise, and learn continuously without limits."],
                 "vocabulary_and_concepts": ["Flask", "Render", "Python", "AI", "Server"]
             }
             save_brain()
@@ -39,22 +38,25 @@ def save_brain():
     try:
         with open(BRAIN_FILE, "w", encoding="utf-8") as f:
             json.dump(BRAIN_DATA, f, indent=4)
-        print("Brain.json updated and auto-trained successfully!")
+        print("Brain.json updated and infinitely expanded successfully!")
     except Exception as e:
         print(f"Error saving brain.json: {e}")
 
 # Initial load on boot
 load_brain()
 
-# Build system prompt dynamically from brain data
+# Build system prompt dynamically (passing the latest 500 concepts to the model prompt to keep token size healthy, while storing everything infinitely in brain.json)
 def get_system_prompt():
     concepts = BRAIN_DATA.get('vocabulary_and_concepts', [])
+    # We send the latest/most recent 500 concepts to Gemini's system instructions, 
+    # but brain.json retains 100% of everything ever learned forever!
+    recent_context = concepts[-500:] if len(concepts) > 500 else concepts
     return f"""
 You are {BRAIN_DATA.get('ai_identity', {}).get('name', 'AI')}.
 Purpose: {BRAIN_DATA.get('ai_identity', {}).get('purpose', '')}
 Core Rules: {json.dumps(BRAIN_DATA.get('core_rules', []))}
-Learned Brain Memory (Total concepts: {len(concepts)}): {json.dumps(concepts[-200:])} 
-(Use this evolving memory base to inform your context and vocabulary).
+Total Lifetime Memory Concepts Stored: {len(concepts)}
+Recent Memory Focus: {json.dumps(recent_context)}
 """
 
 # --- KEEP-ALIVE WORKER ---
@@ -83,7 +85,7 @@ def home():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "healthy", "brain_size": len(BRAIN_DATA.get('vocabulary_and_concepts', []))}), 200
+    return jsonify({"status": "healthy", "total_brain_memory_size": len(BRAIN_DATA.get('vocabulary_and_concepts', []))}), 200
 
 
 @app.route("/chat", methods=["POST"])
@@ -99,7 +101,6 @@ def chat():
 
     for attempt in range(max_retries):
         try:
-            # Generate response using current system memory
             response = client.models.generate_content(
                 model="gemini-3.8-flash",
                 contents=user_prompt,
@@ -111,8 +112,7 @@ def chat():
             
             ai_reply = response.text
 
-            # --- AUTO-TRAIN LOGIC ---
-            # Extract new words/tokens from the user prompt and AI response to expand brain.json
+            # --- INFINITE AUTO-TRAIN LOGIC ---
             words = [w.strip(".,!?()[]{}\"'`") for w in (user_prompt + " " + ai_reply).split() if len(w) > 4]
             current_concepts = set(BRAIN_DATA.get('vocabulary_and_concepts', []))
             
@@ -123,17 +123,16 @@ def chat():
                     new_additions += 1
 
             if new_additions > 0:
-                # Keep up to 1000 words as requested
-                BRAIN_DATA['vocabulary_and_concepts'] = list(current_concepts)[-1000:]
+                # No limit! Stores everything infinitely.
+                BRAIN_DATA['vocabulary_and_concepts'] = list(current_concepts)
                 save_brain()
 
             return jsonify({
                 "response": ai_reply,
-                "brain_stats": f"Learned {new_additions} new concepts! Total memory size: {len(BRAIN_DATA['vocabulary_and_concepts'])}"
+                "brain_stats": f"Learned {new_additions} new concepts! Total lifetime memory size: {len(BRAIN_DATA['vocabulary_and_concepts'])}"
             })
 
         except Exception as e:
-        
             error_message = str(e)
             if ("503" in error_message or "UNAVAILABLE" in error_message) and attempt < max_retries - 1:
                 print(f"Model busy (503), retrying in {backoff_delay}s...")
