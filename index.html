@@ -6,8 +6,10 @@
     <title>Render Server AI Chat</title>
     <style>
         body { font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .chat-container { width: 100%; max-width: 600px; background: #1e293b; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; height: 80vh; }
-        .chat-header { background: #0284c7; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 1.1rem; }
+        .chat-container { width: 100%; max-width: 600px; background: #1e293b; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; height: 85vh; }
+        .chat-header { background: #0284c7; color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.1rem; }
+        .new-chat-btn { background: #0369a1; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+        .new-chat-btn:hover { background: #0284c7; }
         .chat-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .message { padding: 10px 14px; border-radius: 6px; max-width: 80%; line-height: 1.4; word-break: break-word; white-space: pre-wrap; }
         .user-message { background: #0369a1; align-self: flex-end; color: #f0f9ff; }
@@ -21,7 +23,10 @@
 </head>
 <body>
     <div class="chat-container">
-        <div class="chat-header">🤖 Render Server AI (Connected via API)</div>
+        <div class="chat-header">
+            <span>🤖 Render Server AI</span>
+            <button class="new-chat-btn" onclick="startNewChat()">🧹 New Chat</button>
+        </div>
         <div id="chatMessages" class="chat-messages">
             <div class="message ai-message">Hello! I am your AI running live on your Render server with persistent memory. How can I help you today?</div>
         </div>
@@ -33,6 +38,7 @@
     </div>
 
     <script>
+        let chatHistory = []; // Holds current session history
         const messagesContainer = document.getElementById('chatMessages');
         const inputField = document.getElementById('userInput');
         const statsFooter = document.getElementById('statsFooter');
@@ -41,6 +47,7 @@
             const prompt = inputField.value.trim();
             if (!prompt) return;
 
+            // Render user message on screen
             messagesContainer.innerHTML += `<div class="message user-message">${escapeHtml(prompt)}</div>`;
             inputField.value = '';
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -54,12 +61,17 @@
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt })
+                    body: JSON.stringify({ prompt: prompt, history: chatHistory })
                 });
 
                 const data = await response.json();
                 if (response.ok) {
                     aiMsgEl.innerText = data.response;
+                    
+                    // Push to session history so context flows naturally
+                    chatHistory.push({ role: "user", content: prompt });
+                    chatHistory.push({ role: "assistant", content: data.response });
+
                     if (data.brain_stats) {
                         statsFooter.innerText = data.brain_stats;
                     }
@@ -74,6 +86,12 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
+        function startNewChat() {
+            chatHistory = []; // Clear short-term memory
+            messagesContainer.innerHTML = `<div class="message ai-message">Started a new chat session! (Long-term brain.json memory is safely retained).</div>`;
+            statsFooter.innerText = "Memory: Cleared session, ready";
+        }
+
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
                 sendMessage();
@@ -83,8 +101,6 @@
         function escapeHtml(text) {
             return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
-        console.log("user joined")
-        
     </script>
 </body>
 </html>
